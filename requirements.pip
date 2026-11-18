@@ -5,3 +5,4 @@ requests==2.31.0
 black==24.2.0
 bandit==1.7.9
 pylint==3.2.7
+mitmproxy==11.0.2

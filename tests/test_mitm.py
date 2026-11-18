@@ -24,8 +24,8 @@ def test_an_env_variable_that_is_not_a_binary_is_skipped(monkeypatch, tmp_path):
 def test_the_project_venv_comes_before_path(monkeypatch, tmp_path):
     monkeypatch.delenv("MITMDUMP_BIN", raising=False)
     monkeypatch.setattr(mitm, "HERE", str(tmp_path / "app" / "mocks"))
-    (tmp_path / "app" / ".venv-mitm" / "bin").mkdir(parents=True)
-    local = fake_binary(tmp_path / "app" / ".venv-mitm" / "bin")
+    (tmp_path / "app" / ".venv" / "bin").mkdir(parents=True)
+    local = fake_binary(tmp_path / "app" / ".venv" / "bin")
     other = tmp_path / "other"
     other.mkdir()
     fake_binary(other)

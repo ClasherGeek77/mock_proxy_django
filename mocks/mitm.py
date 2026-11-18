@@ -10,8 +10,8 @@ HINT = "run ./first_setup.sh, or brew install mitmproxy, or set MITMDUMP_BIN"
 
 
 def find_mitmdump():
-    """MITMDUMP_BIN, then this project's .venv-mitm, then mitmdump on PATH."""
-    local = os.path.join(os.path.dirname(HERE), ".venv-mitm", "bin", "mitmdump")
+    """MITMDUMP_BIN, then this project's .venv, then mitmdump on PATH."""
+    local = os.path.join(os.path.dirname(HERE), ".venv", "bin", "mitmdump")
     for path in (os.environ.get("MITMDUMP_BIN"), local, shutil.which("mitmdump")):
         if path and os.path.isfile(path) and os.access(path, os.X_OK):
             return path

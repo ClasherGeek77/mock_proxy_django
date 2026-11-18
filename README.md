@@ -1,6 +1,6 @@
 # mock proxy django
 
-a rule-driven mock proxy. point a client at it as its http proxy and the rules mock the answers they match while everything else goes through to the real origin. it is also the mock server for direct calls, its admin api and its editor ui at once. the wire is the real **mitmproxy** (`mitmdump`); django 4.2 (the last that runs on python 3.8) is the rule manager behind it: no database, no sessions, no templates. built 2026-11-18. the rules engine is a port of the mitmproxy `rules.py` addon.
+a rule-driven mock proxy. point a client at it as its http proxy and the rules mock the answers they match while everything else goes through to the real origin. it is also the mock server for direct calls, its admin api and its editor ui at once. the wire is the real **mitmproxy** (`mitmdump`); django 4.2 is the rule manager behind it: no database, no sessions, no templates. built 2026-11-18. the rules engine is a port of the mitmproxy `rules.py` addon.
 
 ## why mitmdump in front
 
@@ -19,14 +19,14 @@ client --> mitmdump :38800 --(addon asks: what do I do with this?)--> django rul
 ## how to run it
 
 ```bash
-./first_setup.sh                   # once: .venv (django, pytest, requests, bandit, black, pylint) and .venv-mitm (mitmproxy)
+./first_setup.sh                   # once: .venv on python 3.11 (django, mitmproxy, pytest, requests, bandit, black, pylint)
 .venv/bin/python manage.py runmock                 # http://127.0.0.1:38800
 .venv/bin/python manage.py runmock --port 9000 [--no-mitm] [--insecure]
 ./run_tests.sh                     # 104 tests, the suite starts its own server on a free port
 ./checks.sh                        # bandit, black, pylint (10/10)
 ```
 
-`runmock` finds the binary in this order: `MITMDUMP_BIN`, `.venv-mitm/bin/mitmdump`, `mitmdump` on `PATH` (so `brew install mitmproxy` works too). mitmproxy needs python 3.10+, which is why it has its own venv (`MITM_PYTHON=/path/to/python3.11 ./first_setup.sh` picks the interpreter). the version is pinned in `requirements-mitm.pip`; 11.0.2 is the one checked on macOS 10.15. a plain kill of `runmock` takes mitmdump down with it.
+`runmock` finds the binary in this order: `MITMDUMP_BIN`, `.venv/bin/mitmdump` (installed by `first_setup.sh` from `requirements.pip`, mitmproxy 11.0.2 is the one checked on macOS 10.15), `mitmdump` on `PATH` (so `brew install mitmproxy` works too). mitmproxy needs python 3.10+, so the project is on 3.11 like the other boilerplates. a plain kill of `runmock` takes mitmdump down with it.
 
 `MOCK_URL=http://127.0.0.1:38800 ./run_tests.sh` tests an already running server instead (the live-reload test skips, it needs the server's data dir). `MOCK_DATA_DIR` moves all mutable state (rules, history, hits, rule-content, the CA) off the checked-in files; the tests use it.
 
