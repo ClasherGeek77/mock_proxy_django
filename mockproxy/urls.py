@@ -10,6 +10,8 @@ urlpatterns = [
     re_path(r"^(?:ui)?$", views.ui),
     re_path(r"^ca\.(?:pem|crt)$", views.ca_pem),
     re_path(r"^api/send$", views.send),
+    re_path(r"^api/proxy/decide$", views.proxy_decide),
+    re_path(r"^api/proxy/seen$", views.proxy_seen),
     re_path(r"^api/version(?:/.*)?$", views.version),
     re_path(r"^api/mock-state(?:/.*)?$", views.mock_state),
     re_path(r"^api/metrics/?$", views.metrics),
@@ -22,7 +24,8 @@ urlpatterns = [
     re_path(r"^api/rule-content/?$", views.content_list),
     re_path(r"^api/rule-content/(?P<name>[^/]+)/?$", views.content_item),
     re_path(
-        r"^api/(?:mock-state|metrics|rules|history|rule-content)(?:/.*)?$", views.no
+        r"^api/(?:mock-state|metrics|rules|history|rule-content|proxy)(?:/.*)?$",
+        views.no,
     ),
     re_path(r"^rule-content/(?P<name>.*)$", views.content_serve),
     re_path(r"^", views.mock),

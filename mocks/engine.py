@@ -20,11 +20,9 @@ Semantics kept from the original:
       no thread)
 """
 
-import http.client
 import json
 import os
 import re
-import ssl
 import threading
 import time
 import urllib.error
@@ -43,7 +41,6 @@ RULES_FILE = os.path.join(DATA_DIR, "rules.json")
 CONTENT_DIR = os.path.join(DATA_DIR, "rule_content")
 HITS_FILE = os.path.join(DATA_DIR, "hits.jsonl")
 MAX_DELAY_MS = 30000
-VERIFY_ORIGINS = True  # the runmock --insecure flag turns it off
 
 CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",
@@ -400,47 +397,6 @@ def forward(req, base):
             {"Content-Type": "application/json"},
             json.dumps({"error": "proxy failed", "detail": str(exc)}).encode(),
         )
-
-
-def origin_ssl():
-    ctx = ssl.create_default_context()
-    if not VERIFY_ORIGINS:  # --insecure: self-signed dev origins
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE  # nosec B501
-    return ctx
-
-
-def passthrough(req, scheme, netloc):
-    """Proxy mode, no rule matched: replay the request to the real origin as is.
-
-    No redirect following (the client does that), no body re-encoding.
-    """
-    skip = {
-        "host",
-        "content-length",
-        "connection",
-        "proxy-connection",
-        "accept-encoding",
-    }
-    hdrs = {k: v for k, v in req["headers"].items() if k.lower() not in skip}
-    if scheme == "https":
-        conn = http.client.HTTPSConnection(netloc, timeout=10, context=origin_ssl())
-    else:
-        conn = http.client.HTTPConnection(netloc, timeout=10)
-    try:
-        conn.request(
-            req["method"],
-            req["path"],
-            body=req["body"].encode("utf-8") if req["body"] else None,
-            headers=hdrs,
-        )
-        resp = conn.getresponse()
-        return resp.status, dict(resp.getheaders()), resp.read()
-    except (http.client.HTTPException, OSError) as exc:
-        err = {"error": "origin unreachable", "detail": str(exc)}
-        return 502, {"Content-Type": "application/json"}, json.dumps(err).encode()
-    finally:
-        conn.close()
 
 
 # ---------------------------------------------------------------- engine

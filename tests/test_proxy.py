@@ -90,7 +90,7 @@ def test_hangup_rule_works_through_the_proxy(via, make_rule):
 def test_unreachable_origin_is_a_502(via):
     res = via.get("http://127.0.0.1:1/nothing", timeout=10)
     assert res.status_code == 502
-    assert res.json()["error"] == "origin unreachable"
+    assert "Connect call failed" in res.text  # mitmproxy's own error page
 
 
 def test_proxy_request_to_the_mock_itself_is_still_direct(via, base_url):
@@ -104,7 +104,7 @@ def test_proxied_hits_show_in_metrics(via, api, make_rule):
     assert api.get("/api/metrics").json()["byRule"][rule.name]["hits"] == 1
 
 
-def test_connect_is_a_blind_tunnel(base_url, upstream):
+def test_connect_to_a_plain_http_port_relays_what_follows(base_url, upstream):
     host, port = base_url.rsplit("//", 1)[1].split(":")
     target = upstream.rsplit("//", 1)[1]
     with socket.create_connection((host, int(port)), timeout=10) as sock:
@@ -119,19 +119,16 @@ def test_connect_is_a_blind_tunnel(base_url, upstream):
     assert b'"path": "/tun"' in data
 
 
-def test_connect_to_a_dead_port_closes_after_the_tunnel_opens(base_url):
+def test_connect_to_a_dead_port_is_a_502_at_the_connect(base_url):
     host, port = base_url.rsplit("//", 1)[1].split(":")
     with socket.create_connection((host, int(port)), timeout=10) as sock:
         sock.sendall(b"CONNECT 127.0.0.1:1 HTTP/1.1\r\nHost: 127.0.0.1:1\r\n\r\n")
-        assert b"200" in sock.recv(4096).split(b"\r\n")[0]
-        sock.sendall(b"GET / HTTP/1.1\r\nHost: x\r\n\r\n")
-        try:
-            assert sock.recv(4096) == b""
-        except ConnectionResetError:  # closed with our bytes unread, same thing
-            pass
+        assert b"502" in sock.recv(4096).split(b"\r\n")[0]
 
 
-def test_no_mitm_server_answers_a_dead_connect_with_502(tmp_path):
+@pytest.fixture
+def no_mitm_port(tmp_path):
+    """A second mock proxy that tunnels https untouched, with its own empty state."""
     port = free_port()
     # fixed argv, a free port we picked; the state goes to a temp dir
     proc = subprocess.Popen(  # pylint: disable=consider-using-with  # nosec B603
@@ -142,18 +139,42 @@ def test_no_mitm_server_answers_a_dead_connect_with_502(tmp_path):
         stderr=subprocess.DEVNULL,
     )
     try:
-        for _ in range(100):
+        for _ in range(300):
             try:
                 socket.create_connection(("127.0.0.1", port), timeout=1).close()
                 break
             except OSError:
                 time.sleep(0.1)
-        with socket.create_connection(("127.0.0.1", port), timeout=10) as sock:
-            sock.sendall(b"CONNECT 127.0.0.1:1 HTTP/1.1\r\nHost: 127.0.0.1:1\r\n\r\n")
-            assert b"502" in sock.recv(4096).split(b"\r\n")[0]
+        yield port
     finally:
         proc.terminate()
-        proc.wait(timeout=5)
+        proc.wait(timeout=10)
+
+
+def test_no_mitm_answers_a_dead_connect_with_502(no_mitm_port):
+    with socket.create_connection(("127.0.0.1", no_mitm_port), timeout=10) as sock:
+        sock.sendall(b"CONNECT 127.0.0.1:1 HTTP/1.1\r\nHost: 127.0.0.1:1\r\n\r\n")
+        assert b"502" in sock.recv(4096).split(b"\r\n")[0]
+
+
+def test_no_mitm_leaves_https_alone_so_its_rules_cannot_fire(
+    no_mitm_port, tls_upstream
+):
+    base = f"http://127.0.0.1:{no_mitm_port}"
+    sess = requests.Session()
+    sess.trust_env = False
+    rule = {
+        "rule-name": "would-mock",
+        "match": {"urlContains": "/untouched"},
+        "responseOverride": {"status": 418},
+    }
+    assert sess.post(base + "/api/rules", json=rule, timeout=10).status_code in (
+        200,
+        201,
+    )
+    sess.proxies = {"https": base}
+    res = sess.get(tls_upstream + "/untouched", verify=False, timeout=10)
+    assert res.status_code == 200 and res.json()["upstream"] is True
 
 
 # ------------------------------------------------------------------ https

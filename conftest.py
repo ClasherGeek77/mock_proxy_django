@@ -12,6 +12,7 @@ import json
 import os
 import shutil
 import socket
+import ssl
 import subprocess  # nosec B404
 import sys
 import tempfile
@@ -21,8 +22,6 @@ import uuid
 
 import pytest
 import requests
-
-from mocks import tlsca
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -73,17 +72,14 @@ def base_url(server_dir):
         stderr=subprocess.DEVNULL,
     )
     base = f"http://127.0.0.1:{port}"
-    for _ in range(100):
+    for _ in range(300):  # mitmdump takes a few seconds to start on a small laptop
         try:
-            if (
-                requests.get(
-                    base + "/health", timeout=1, proxies={"http": None}
-                ).status_code
-                == 200
-            ):
+            res = requests.get(base + "/health", timeout=1, proxies={"http": None})
+            if res.status_code == 200:
                 break
         except requests.RequestException:
-            time.sleep(0.1)
+            pass
+        time.sleep(0.1)
     else:
         proc.kill()
         pytest.fail(f"server did not come up on {base}")
@@ -176,9 +172,19 @@ def upstream():
 
 @pytest.fixture(scope="session")
 def tls_upstream(tmp_path_factory):
-    """The same origin over https, with a certificate nobody trusts (the server runs
-    with MOCK_INSECURE, like a self-signed dev server)."""
-    ctx = tlsca.CA(str(tmp_path_factory.mktemp("origin_ca"))).context("127.0.0.1")
+    """The same origin over https, with a self-signed certificate nobody trusts (the
+    server runs with MOCK_INSECURE, like a dev server)."""
+    folder = tmp_path_factory.mktemp("origin_cert")
+    cert, key = str(folder / "cert.pem"), str(folder / "key.pem")
+    # fixed argv, file names we made; LibreSSL's openssl is all this machine has
+    subprocess.run(  # nosec B603
+        ["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "2"]
+        + ["-subj", "/CN=127.0.0.1", "-keyout", key, "-out", cert],
+        check=True,
+        capture_output=True,
+    )
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ctx.load_cert_chain(cert, key)
     srv = Upstream(("127.0.0.1", 0), echo_handler())
     srv.socket = ctx.wrap_socket(srv.socket, server_side=True)
     threading.Thread(target=srv.serve_forever, daemon=True).start()

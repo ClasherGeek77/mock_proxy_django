@@ -1,5 +1,6 @@
 """The routes of urls.py. Admin responses are not counted in the metrics."""
 
+import base64
 import http.client
 import json
 import os
@@ -9,10 +10,10 @@ from urllib.parse import parse_qs
 
 from django.http import HttpResponse
 
-from . import engine, tlsca
+from . import engine
 from .admin import NAME_OK, norm_name
-from .mocking import body_of, mock, reply
-from .state import ADMIN, CA, ENGINE, VERSION
+from .mocking import body_of, decide, mock, reply
+from .state import ADMIN, CA_CERT, ENGINE, PUBLIC, VERSION
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ANY = ("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD")
@@ -66,17 +67,34 @@ def ui(request):
 
 @route(*ANY)
 def ca_pem(request):
-    try:
-        CA.ensure()
-    except tlsca.CAError as exc:
-        return reply(503, {"error": str(exc)})
-    with open(CA.cert, "rb") as fh:
+    """The CA mitmdump signs its https certificates with (made on its first start)."""
+    if not os.path.exists(CA_CERT):
+        return reply(503, {"error": "the proxy has not made its CA yet"})
+    with open(CA_CERT, "rb") as fh:
         return reply(
             200,
             fh.read(),
             "application/x-x509-ca-cert",
             headers={"Content-Disposition": "attachment; filename=ca.pem"},
         )
+
+
+# the two calls the mitmdump addon makes (mocks/addon.py)
+@route("POST")
+def proxy_decide(request):
+    doc = json_body(request)
+    verdict = decide(
+        engine.make_req(doc["method"], doc["path"], doc["headers"], doc["body"])
+    )
+    if verdict["kind"] == "respond":
+        verdict["body"] = base64.b64encode(verdict["body"]).decode("ascii")
+    return 200, verdict
+
+
+@route("POST")
+def proxy_seen(request):
+    ENGINE.metrics.request(json_body(request)["status"])
+    return 200, {"success": True}
 
 
 @route("POST", fallthrough=True)
@@ -90,7 +108,8 @@ def send(request):
     if not url.startswith(("http://", "https://")):
         return 400, {"errors": ["url must start with http(s)://"]}
     start = time.perf_counter()
-    conn = http.client.HTTPConnection("127.0.0.1", int(request.META["SERVER_PORT"]))
+    port = PUBLIC["port"] or int(request.META["SERVER_PORT"])
+    conn = http.client.HTTPConnection("127.0.0.1", port)
     conn.timeout = 20
     try:
         conn.request(method, url)

@@ -8,3 +8,4 @@ history.json
 *.tmp
 ca/
 db.sqlite3
+.venv-mitm/
