@@ -13,7 +13,10 @@ fi
 
 PYTHON_MINOR=$(cut -d. -f1,2 .python-version)
 PYTHON=python$PYTHON_MINOR
-command -v "$PYTHON" > /dev/null || PYTHON="$HOME/camoufox-env/bin/python$PYTHON_MINOR"
+command -v "$PYTHON" > /dev/null || {
+    echo "no $PYTHON on PATH. Install it (https://www.python.org/downloads/) and run again"
+    exit 1
+}
 echo "creating .venv with $($PYTHON --version) (needs network for pip)"
 $PYTHON -m venv .venv
 .venv/bin/python -m pip install -q --upgrade pip
