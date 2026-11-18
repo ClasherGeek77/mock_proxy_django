@@ -1,6 +1,6 @@
 # mock proxy django
 
-the django twin of `../mock_proxy_python`, same behaviour one for one: a rule-driven mock proxy. point a client at it as its http proxy and the rules mock the answers they match while everything else goes through to the real origin. it is also the mock server for direct calls, its admin api and its editor ui at once. django 4.2 (the last that runs on python 3.8), no database, no sessions, no templates. built 2026-11-18. the rules engine is a port of the mitmproxy `rules.py` addon.
+a rule-driven mock proxy. point a client at it as its http proxy and the rules mock the answers they match while everything else goes through to the real origin. it is also the mock server for direct calls, its admin api and its editor ui at once. django 4.2 (the last that runs on python 3.8), no database, no sessions, no templates. built 2026-11-18. the rules engine is a port of the mitmproxy `rules.py` addon.
 
 the split: django owns routing, requests, responses and the wsgi plumbing; the two things django cannot do, taking a proxy request line and a `CONNECT`, live in one small server class (`mocks/serving.py`) that hands everything else to django.
 
@@ -96,8 +96,4 @@ saves validate: errors are a 400 with an `errors` list, soft problems come back 
 
 the node stack, google auth, mongo/s3 capture, ngrok, mitmproxy itself and its 120 MB binaries. no orm either: rules are a json document the editor and the file system both own (`rules.json`, re-read on change), so django's database, auth and session apps stay out of `INSTALLED_APPS`. `proxyTo` is a plain urllib replay. the only outside tool is the `openssl` binary, used just to make certificates.
 
-differences from the stdlib twin, all forced by wsgi: hop-by-hop headers from an origin (`keep-alive`, `te`, `upgrade` ...) are not copied onto the reply, a `HEAD` reply carries no `Content-Length`, a `Server:` header names wsgiref, and headers with an underscore in the name are dropped (django's spoofing guard).
-
-## portfolio
-
-sibling: `../mock_proxy_python`, the same suite and the same ui against the stdlib build.
+wsgi side effects: hop-by-hop headers from an origin (`keep-alive`, `te`, `upgrade` ...) are not copied onto the reply, a `HEAD` reply carries no `Content-Length`, a `Server:` header names wsgiref, and headers with an underscore in the name are dropped (django's spoofing guard).
