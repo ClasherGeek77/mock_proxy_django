@@ -1,0 +1,17 @@
+case,rule_path_suffix,rule_method,rule_header,rule_body_contains,req_method,req_path_suffix,req_header,req_body,expect_hit
+path only matches,,,,,GET,,,,true
+path suffix present,/a,,,,GET,/a,,,true
+path suffix missing,/a,,,,GET,/b,,,false
+method matches,,POST,,,POST,,,,true
+method mismatch,,POST,,,GET,,,,false
+method is case-insensitive,,post,,,POST,,,,true
+header matches,,,X-Env:qa,,GET,,X-Env:qa,,true
+header value differs,,,X-Env:qa,,GET,,X-Env:prod,,false
+header absent,,,X-Env:qa,,GET,,,,false
+header name is case-insensitive,,,X-Env:qa,,GET,,x-env:qa,,true
+body contains one part,,,,alpha,POST,,,alpha beta,true
+body is missing the part,,,,gamma,POST,,,alpha beta,false
+body contains all parts,,,,alpha|beta,POST,,,alpha beta,true
+body is missing one of the parts,,,,alpha|gamma,POST,,,alpha beta,false
+all criteria together,/a,POST,X-Env:qa,alpha,POST,/a,X-Env:qa,alpha,true
+one criterion off breaks it,/a,POST,X-Env:qa,alpha,POST,/a,X-Env:qa,omega,false

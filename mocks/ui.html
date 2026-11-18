@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mock proxy</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { --ink: #1b1f24; --mute: #59616c; --line: #d8dce2; --accent: #1d4ed8; --bad: #b42318; --ok: #146c43; }
+  body { font: 16px/1.5 system-ui, sans-serif; color: var(--ink); max-width: 980px; margin: 0 auto; padding: 24px 16px 64px; }
+  header { display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: baseline; justify-content: space-between; }
+  h1 { font-size: 24px; margin: 0; }
+  h2 { font-size: 18px; margin: 32px 0 8px; }
+  p { margin: 8px 0; }
+  .mute { color: var(--mute); font-size: 14px; }
+  button, input, select, textarea { font: inherit; }
+  button { padding: 6px 14px; border: 1px solid #8b93a0; border-radius: 6px; background: #fff; color: var(--ink); cursor: pointer; }
+  button:hover { background: #f1f3f6; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover { background: #1a43b8; }
+  button.small { padding: 2px 10px; font-size: 14px; }
+  button.danger { color: var(--bad); }
+  input, select, textarea { padding: 6px 8px; border: 1px solid #8b93a0; border-radius: 6px; max-width: 100%; box-sizing: border-box; }
+  :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  code { background: #f1f3f6; padding: 2px 6px; border-radius: 4px; font-size: 14px; }
+  #state.paused { color: var(--bad); font-weight: 700; }
+  #msg { margin: 16px 0 0; padding: 8px 12px; border-left: 4px solid var(--line); background: #f6f7f9; min-height: 24px; }
+  #msg.ok { border-color: var(--ok); } #msg.bad { border-color: var(--bad); }
+  .scroll { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  th { font-size: 14px; color: var(--mute); font-weight: 600; }
+  tr.off td { color: var(--mute); }
+  td.actions { white-space: nowrap; text-align: right; }
+  input[type=checkbox], input[type=radio] { width: 18px; height: 18px; margin: 0 6px 0 0; vertical-align: -3px; }
+  dialog { box-sizing: border-box; border: 1px solid var(--line); border-radius: 10px; padding: 20px 24px 0; width: min(620px, calc(100vw - 32px)); max-height: calc(100vh - 32px); }
+  dialog::backdrop { background: rgba(0, 0, 0, .4); }
+  dialog h2 { margin-top: 0; }
+  label.field { display: grid; gap: 4px; margin: 10px 0; font-weight: 600; }
+  label.field input, label.field select, label.field textarea { font-weight: 400; }
+  fieldset { border: 1px solid var(--line); border-radius: 8px; margin: 12px 0; padding: 2px 16px 8px; }
+  legend { font-weight: 600; padding: 0 6px; }
+  .opt { display: block; margin: 10px 0 2px; }
+  .sub { margin: 4px 0 8px 24px; }
+  .sub label.field { font-weight: 400; margin: 8px 0; }
+  .two { display: grid; grid-template-columns: 1fr 160px; gap: 16px; }
+  .three { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 12px; }
+  .two > *, .three > * { min-width: 0; }
+  .two input, .three input, .two select { width: 100%; }
+  @media (max-width: 560px) { .two { grid-template-columns: 1fr; } .three { grid-template-columns: 1fr 1fr; } .three > :first-child { grid-column: 1 / -1; } }
+  .buttons { display: flex; gap: 8px; justify-content: flex-end; position: sticky; bottom: 0; background: #fff; padding: 12px 0 20px; margin-top: 8px; }
+  #try { display: flex; flex-wrap: wrap; gap: 8px; }
+  #t-path { flex: 1 1 260px; }
+  pre { background: #f6f7f9; border: 1px solid var(--line); border-radius: 8px; padding: 12px; overflow: auto; margin: 8px 0; white-space: pre-wrap; }
+  pre:empty { display: none; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>mock proxy</h1>
+  <p>Mocking is <b id="state">on</b> <button id="pause" class="small">pause</button></p>
+</header>
+<p class="mute">Use it as a proxy: <code id="hint"></code> <button id="copy" class="small">copy</button></p>
+<p class="mute">https works too: <code id="hint-s"></code>
+  <a href="/ca.pem" download="mock-proxy-ca.pem">download the CA certificate</a> and trust it, or keep <code>-k</code> to ignore certificate errors.</p>
+<p id="msg" role="status" aria-live="polite">Ready. Press "New rule" to make this server answer the way you want.</p>
+
+<h2>Rules</h2>
+<p class="mute">The lowest priority number wins when several rules match.</p>
+<p><button id="new" class="primary">New rule</button> <a href="/api/rules/export" download="rules.json">export all</a></p>
+<div class="scroll" tabindex="0" aria-label="rules table">
+<table>
+  <thead><tr><th>On</th><th>Name</th><th>Priority</th><th>When</th><th>Then</th><th>Hits</th><th></th></tr></thead>
+  <tbody id="rules"></tbody>
+</table>
+</div>
+
+<h2>Try it</h2>
+<form id="try">
+  <select id="t-method" aria-label="method"><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option></select>
+  <input id="t-path" aria-label="url" placeholder="www.yahoo.com/mail">
+  <button type="submit" class="primary">Send</button>
+</form>
+<p id="t-rule" class="mute"></p>
+<pre id="t-out"></pre>
+
+<dialog id="dlg">
+<form id="form">
+  <h2 id="title">New rule</h2>
+  <div class="two">
+    <label class="field">URL contains
+      <input id="url" placeholder="www.yahoo.com/mail" autocomplete="off">
+    </label>
+    <label class="field">Method
+      <select id="method"><option value="">any</option><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option></select>
+    </label>
+  </div>
+
+  <fieldset>
+    <legend>Then</legend>
+    <label class="opt"><input type="radio" name="mode" value="respond" checked>Answer with a fake response</label>
+    <div class="sub" data-for="respond">
+      <label class="field">Status code
+        <input id="status" type="number" min="100" max="599" value="200" list="codes">
+      </label>
+      <datalist id="codes">
+        <option value="200">OK</option><option value="201">Created</option><option value="400">Bad Request</option>
+        <option value="401">Unauthorized</option><option value="404">Not Found</option><option value="418">Teapot</option>
+        <option value="429">Too Many Requests</option><option value="500">Server Error</option><option value="503">Unavailable</option>
+      </datalist>
+      <label class="field">Body (JSON or text)
+        <textarea id="body" rows="2" placeholder='{"ok": true}'></textarea>
+      </label>
+    </div>
+    <label class="opt"><input type="radio" name="mode" value="hangup">Hang up, send no reply</label>
+    <label class="opt"><input type="radio" name="mode" value="proxy">Forward to another server</label>
+    <div class="sub" data-for="proxy" hidden>
+      <label class="field">Server address
+        <input id="proxyTo" type="url" placeholder="http://www.yahoo.com">
+      </label>
+    </div>
+    <label class="opt"><input type="radio" name="mode" value="pass">Let it through unchanged</label>
+  </fieldset>
+
+  <div class="three">
+    <label class="field">Name (optional)
+      <input id="name" placeholder="made from the URL" autocomplete="off">
+    </label>
+    <label class="field">Priority
+      <input id="priority" type="number" value="10">
+    </label>
+    <label class="field">Wait first (ms)
+      <input id="delay" type="number" min="0" max="30000" value="0">
+    </label>
+  </div>
+
+  <div class="buttons">
+    <button type="button" id="cancel">Cancel</button>
+    <button type="submit" class="primary">Save</button>
+  </div>
+</form>
+</dialog>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let rules = [], hits = {}, paused = false, editing = null, doc = {};
+
+async function api(method, path, body) {
+  const res = await fetch(path, {
+    method,
+    headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  let data = null;
+  try { data = await res.json(); } catch (e) { /* empty body */ }
+  return { status: res.status, data };
+}
+function say(text, bad) { const m = $('msg'); m.textContent = text; m.className = bad === undefined ? '' : (bad ? 'bad' : 'ok'); }
+const mode = () => document.querySelector('input[name=mode]:checked').value;
+const slug = (s) => s.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+
+function then(r) {
+  let out = 'nothing';
+  if (r.disconnect) out = 'hang up';
+  else if (r.responseOverride) out = 'answer ' + (r.responseOverride.status || 200);
+  else if (r.proxyTo) out = 'forward to ' + r.proxyTo;
+  else if (r.requestOverride) out = 'rewrite';
+  return out + (r.delayMs ? ', after ' + r.delayMs + ' ms' : '');
+}
+
+function paintRules() {
+  const body = $('rules');
+  body.textContent = '';
+  rules.forEach((r) => {
+    const name = r['rule-name'], m = r.match || {};
+    const row = body.insertRow();
+    if (r.active === false) row.className = 'off';
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.checked = r.active !== false;
+    box.setAttribute('aria-label', 'rule ' + name + ' is on');
+    box.onchange = async () => { await api('POST', '/api/rules/' + name + '/toggle'); await refresh(); };
+    row.insertCell().appendChild(box);
+    [name, r.priority === undefined ? 999 : r.priority,
+      (m.method ? m.method + ' ' : '') + (m.urlContains || m.url || '(no condition)'),
+      then(r), hits[name] || 0].forEach((t) => { row.insertCell().textContent = t; });
+    const actions = row.insertCell();
+    actions.className = 'actions';
+    [['try', () => tryRule(r)], ['edit', () => openForm(r)], ['delete', () => remove(name)]].forEach(([label, fn]) => {
+      const b = document.createElement('button');
+      b.textContent = label;
+      b.className = 'small' + (label === 'delete' ? ' danger' : '');
+      b.setAttribute('aria-label', label + ' ' + name);
+      b.onclick = fn;
+      actions.append(b, ' ');
+    });
+  });
+  if (!rules.length) {
+    const c = body.insertRow().insertCell();
+    c.colSpan = 7;
+    c.textContent = 'No rules yet. Press "New rule".';
+  }
+}
+
+async function refresh() {
+  const [list, metrics, state] = await Promise.all([
+    api('GET', '/api/rules'), api('GET', '/api/metrics'), api('GET', '/api/mock-state'),
+  ]);
+  rules = list.data.slice().sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999));
+  hits = {};
+  Object.entries(metrics.data.byRule || {}).forEach(([n, v]) => { hits[n] = v.hits; });
+  paused = state.data.paused;
+  $('state').textContent = paused ? 'PAUSED, requests pass through unmocked' : 'on';
+  $('state').className = paused ? 'paused' : '';
+  $('pause').textContent = paused ? 'resume' : 'pause';
+  paintRules();
+}
+
+/* the form only edits the fields it shows; the rest of the rule is kept as is,
+   so a header match or a rewrite set through the api survives a save */
+function syncMode() {
+  const m = mode();
+  document.querySelectorAll('.sub[data-for]').forEach((d) => { d.hidden = d.dataset.for !== m; });
+  $('proxyTo').required = m === 'proxy';
+  $('status').required = m === 'respond';
+}
+document.querySelectorAll('input[name=mode]').forEach((r) => { r.onchange = syncMode; });
+
+function openForm(rule) {
+  editing = rule ? rule['rule-name'] : null;
+  doc = rule ? JSON.parse(JSON.stringify(rule)) : {};
+  ['rule-name', 'deletedAt', 'updatedAt', 'createdAt'].forEach((k) => delete doc[k]);
+  const m = doc.match || {}, ro = doc.responseOverride || {};
+  $('title').textContent = rule ? 'Edit ' + editing : 'New rule';
+  $('name').value = editing || '';
+  $('name').disabled = !!editing;
+  $('url').value = m.urlContains || '';
+  $('url').required = !(m.url || m.headers || m.bodyContains);
+  $('method').value = m.method || '';
+  $('status').value = ro.status || 200;
+  $('body').value = ro.bodySet === undefined ? '' : (typeof ro.bodySet === 'string' ? ro.bodySet : JSON.stringify(ro.bodySet, null, 2));
+  $('proxyTo').value = doc.proxyTo || '';
+  $('delay').value = doc.delayMs || 0;
+  $('priority').value = doc.priority ?? 10;
+  document.querySelector('input[name=mode][value=' +
+    (doc.disconnect ? 'hangup' : doc.proxyTo ? 'proxy' : doc.responseOverride ? 'respond' : rule ? 'pass' : 'respond') + ']').checked = true;
+  syncMode();
+  $('dlg').showModal();
+  $('url').focus();
+}
+$('cancel').onclick = () => $('dlg').close();
+
+$('form').onsubmit = async (ev) => {
+  ev.preventDefault();
+  const url = $('url').value.trim();
+  const m = Object.assign({}, doc.match || {});
+  if (url) m.urlContains = url; else delete m.urlContains;
+  if ($('method').value) m.method = $('method').value; else delete m.method;
+  doc.match = m;
+  const ro = Object.assign({}, doc.responseOverride || {});
+  delete doc.disconnect; delete doc.proxyTo; delete doc.responseOverride;
+  if (mode() === 'respond') {
+    ro.status = parseInt($('status').value, 10) || 200;
+    const text = $('body').value.trim();
+    if (!text) delete ro.bodySet;
+    else { try { ro.bodySet = JSON.parse(text); } catch (e) { ro.bodySet = text; } }
+    doc.responseOverride = ro;
+  } else if (mode() === 'hangup') doc.disconnect = true;
+  else if (mode() === 'proxy') doc.proxyTo = $('proxyTo').value.trim();
+  const wait = parseInt($('delay').value, 10);
+  if (wait > 0) doc.delayMs = wait; else delete doc.delayMs;
+  doc.priority = parseInt($('priority').value, 10);
+  if (Number.isNaN(doc.priority)) doc.priority = 10;
+
+  const name = editing || slug($('name').value.trim() || ((m.method || '') + '-' + url));
+  if (!editing && rules.some((r) => r['rule-name'] === name) &&
+      !confirm('A rule named "' + name + '" already exists. Overwrite it?')) return;
+  const res = await api('PUT', '/api/rules/' + encodeURIComponent(name), doc);
+  if (res.status >= 400) { say('Not saved: ' + (res.data.errors || ['error ' + res.status]).join('; '), true); return; }
+  const warn = (res.data.warnings || []).join('; ');
+  $('dlg').close();
+  say('Saved "' + name + '", it is live now.' + (warn ? ' Warning: ' + warn : ''), false);
+  await refresh();
+  if (url.includes('/')) send(m.method || 'GET', url);  /* prove it right away */
+};
+
+async function remove(name) {
+  if (!confirm('Delete rule "' + name + '"?')) return;
+  await api('DELETE', '/api/rules/' + encodeURIComponent(name));
+  say('Deleted "' + name + '".', false);
+  await refresh();
+}
+
+function tryRule(rule) {
+  const m = rule.match || {};
+  const u = m.urlContains || m.url;
+  if (u && u.includes('/')) send(m.method || 'GET', target(u));
+  else say('This rule matches "' + (u || 'headers') + '", so type a full url in Try it, or use a proxy client: ' + $('hint').textContent, undefined);
+}
+
+/* "/x" is this server, "www.yahoo.com/x" gets http:// in front, a full url stays */
+function target(u) {
+  u = u.trim();
+  if (u.startsWith('/')) return location.origin + u;
+  return /^https?:\/\//.test(u) ? u : 'http://' + u;
+}
+
+/* really sends the request through this proxy (the server does it, a browser
+   cannot use a proxy by itself), and asks which rule wins */
+async function send(method, raw) {
+  const url = target(raw);
+  $('t-method').value = method;
+  $('t-path').value = raw;
+  $('t-rule').textContent = '';
+  $('t-out').textContent = 'Sending...';
+  const why = await api('POST', '/api/rules/test', { method, url });
+  const own = url.startsWith(location.origin);
+  $('t-rule').textContent = why.data && why.data.matched
+    ? 'Answered by rule: ' + why.data.rule
+    : (own ? 'No rule matches, so this server answers 404.'
+           : 'No rule matches, so it goes through to the real site.');
+  const res = await api('POST', '/api/send', { method, url });
+  const r = res.data || {};
+  $('t-out').textContent = r.status
+    ? r.status + ' ' + r.reason + ' (' + r.ms + ' ms)\n\n' + r.body
+    : 'No reply: ' + (r.error || (r.errors || []).join('; ')) + ' (a hang-up rule does this).';
+  $('t-out').scrollIntoView({ block: 'nearest' });
+  refresh();
+}
+$('try').onsubmit = (ev) => { ev.preventDefault(); send($('t-method').value, $('t-path').value || '/'); };
+
+$('new').onclick = () => openForm(null);
+$('pause').onclick = async () => {
+  await api('POST', '/api/mock-state', { paused: !paused });
+  await refresh();
+  say(paused ? 'Paused: nothing is mocked, traffic passes through.' : 'Mocking is on.', false);
+};
+$('copy').onclick = async () => {
+  try { await navigator.clipboard.writeText($('hint').textContent); say('Copied.', false); }
+  catch (e) { say('Select the command and copy it.', true); }
+};
+
+$('hint').textContent = 'curl -x ' + location.origin + ' http://www.yahoo.com/mail';
+$('hint-s').textContent = 'curl -k -x ' + location.origin + ' https://www.yahoo.com/mail';
+$('t-path').value = 'http://www.yahoo.com/mail';
+refresh();
+setInterval(refresh, 3000);
+</script>
+</body>
+</html>

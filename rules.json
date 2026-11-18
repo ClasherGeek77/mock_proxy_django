@@ -1,0 +1,38 @@
+[
+  {
+    "rule-name": "yahoo-mail-down",
+    "active": true,
+    "priority": 10,
+    "match": {"urlContains": "www.yahoo.com/mail"},
+    "responseOverride": {"status": 503, "bodySet": {"error": "mail is down"}}
+  },
+  {
+    "rule-name": "yahoo-news-slow",
+    "active": true,
+    "priority": 10,
+    "match": {"urlContains": "www.yahoo.com/news", "method": "GET"},
+    "delayMs": 300,
+    "responseOverride": {"status": 200, "bodySet": {"slow": true}}
+  },
+  {
+    "rule-name": "yahoo-finance-hangup",
+    "active": true,
+    "priority": 10,
+    "match": {"urlContains": "www.yahoo.com/finance"},
+    "disconnect": true
+  },
+  {
+    "rule-name": "yahoo-search-limited",
+    "active": true,
+    "priority": 10,
+    "match": {"urlContains": "www.yahoo.com/search"},
+    "responseOverride": {"status": 429, "bodySet": {"error": "slow down"}}
+  },
+  {
+    "rule-name": "yahoo-weather-forward",
+    "active": false,
+    "priority": 20,
+    "match": {"urlContains": "www.yahoo.com/weather", "method": "GET"},
+    "proxyTo": "http://127.0.0.1:40000"
+  }
+]

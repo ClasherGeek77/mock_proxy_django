@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+reports/
+hits.jsonl
+history.json
+*.tmp
+ca/
+db.sqlite3
