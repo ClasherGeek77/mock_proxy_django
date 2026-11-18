@@ -1,0 +1,42 @@
+# one place for the tool settings: checks.sh (bandit, black, pylint) and pytest read it
+
+[tool.black]
+line-length = 88
+target-version = ["py311"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --verbose --junitxml=reports/junit.xml --html=reports/report.html --self-contained-html"
+log_cli = true
+log_cli_level = "INFO"
+log_cli_format = "%(asctime)s [%(levelname)8s] %(message)s (%(filename)s:%(lineno)s)"
+log_cli_date_format = "%Y-%m-%d %H:%M:%S"
+
+[tool.bandit]
+# the assertion helpers use plain asserts
+skips = ["B101"]
+
+[tool.pylint.format]
+max-line-length = 88
+
+[tool.pylint.messages_control]
+# no docstrings in this project, f-string logs read better with values
+# attribute-defined-outside-init: the request handler rebinds rfile/wfile/connection.
+# unused-argument: a django view takes the request whether it reads it or not.
+# too-many-instance-attributes: the handler inherits the socketserver/http ones.
+# redefined-outer-name: pytest fixtures are injected by parameter name.
+# too-many-*, too-few-public-methods: a route table and request wrappers are
+# flat on purpose, splitting them only scatters the logic
+disable = [
+    "missing-module-docstring",
+    "missing-function-docstring",
+    "missing-class-docstring",
+    "logging-fstring-interpolation",
+    "attribute-defined-outside-init",
+    "redefined-outer-name",
+    "too-few-public-methods",
+    "unused-argument",
+    "too-many-instance-attributes",
+    "too-many-return-statements",
+    "too-many-arguments",
+]

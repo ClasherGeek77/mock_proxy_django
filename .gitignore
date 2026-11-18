@@ -3,8 +3,7 @@ __pycache__/
 .venv/
 .pytest_cache/
 reports/
-hits.jsonl
-history.json
 *.tmp
-ca/
-db.sqlite3
+# runtime state next to the checked-in seed rules
+data/*
+!data/rules.json

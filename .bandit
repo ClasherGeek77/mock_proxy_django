@@ -1,3 +1,0 @@
-[bandit]
-# the assertion helpers use plain asserts
-skips: B101

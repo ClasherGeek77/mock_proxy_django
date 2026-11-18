@@ -1,4 +1,4 @@
-from .mocking import reply
+from .apis.helpers import reply
 
 
 class MockMiddleware:

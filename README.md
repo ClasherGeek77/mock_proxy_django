@@ -19,16 +19,16 @@ client --> mitmdump :38800 --(addon asks: what do I do with this?)--> django rul
 ## how to run it
 
 ```bash
-./first_setup.sh                   # once: .venv on python 3.11 (django, mitmproxy, pytest, requests, bandit, black, pylint)
+scripts/first_setup.sh             # once: .venv on python 3.11 (requirements/local.txt: django, mitmproxy, pytest, requests, bandit, black, pylint)
 .venv/bin/python manage.py runmock                 # http://127.0.0.1:38800
 .venv/bin/python manage.py runmock --port 9000 [--no-mitm] [--insecure]
-./run_tests.sh                     # 104 tests, the suite starts its own server on a free port
-./checks.sh                        # bandit, black, pylint (10/10)
+scripts/run_tests.sh               # 104 tests, the suite starts its own server on a free port
+scripts/checks.sh                  # bandit, black, pylint (10/10)
 ```
 
-`runmock` finds the binary in this order: `MITMDUMP_BIN`, `.venv/bin/mitmdump` (installed by `first_setup.sh` from `requirements.pip`, mitmproxy 11.0.2 is the one checked on macOS 10.15), `mitmdump` on `PATH` (so `brew install mitmproxy` works too). mitmproxy needs python 3.10+, so the project is on 3.11 like the other boilerplates. a plain kill of `runmock` takes mitmdump down with it.
+`runmock` finds the binary in this order: `MITMDUMP_BIN`, `.venv/bin/mitmdump` (installed by `scripts/first_setup.sh` from `requirements/base.txt`, mitmproxy 11.0.2 is the one checked on macOS 10.15), `mitmdump` on `PATH` (so `brew install mitmproxy` works too). mitmproxy needs python 3.10+, so the project is on 3.11 like the other boilerplates. a plain kill of `runmock` takes mitmdump down with it.
 
-`MOCK_URL=http://127.0.0.1:38800 ./run_tests.sh` tests an already running server instead (the live-reload test skips, it needs the server's data dir). `MOCK_DATA_DIR` moves all mutable state (rules, history, hits, rule-content, the CA) off the checked-in files; the tests use it.
+`MOCK_URL=http://127.0.0.1:38800 scripts/run_tests.sh` tests an already running server instead (the live-reload test skips, it needs the server's data dir). state lives in `data/` (rules, history, hits, rule-content, the CA); only the seed `data/rules.json` is tracked. `MOCK_DATA_DIR` moves all of it elsewhere, the tests use that so the seed is never touched.
 
 mitmdump prints one line per flow (method, url, status), so a demo shows the traffic as it happens.
 
@@ -58,25 +58,56 @@ mitmdump opens a `CONNECT` up (man in the middle). its CA is made on the first s
 
 ## shape
 
+the layout follows what the big django references agree on ([cookiecutter-django](https://github.com/cookiecutter/cookiecutter-django): `config/` project package with split settings, `requirements/` split by environment, tests apart; [HackSoft Django-Styleguide](https://github.com/HackSoftware/Django-Styleguide): business logic in `services`, the http layer thin in `apis`, tests mirroring the layers), cut down to a tool with no database.
+
 ```
-manage.py                 django's command line, `runmock` is the entry point
-mockproxy/                settings (no db, one middleware), urls (the whole route table, first match wins, unclaimed paths are the rule engine's), wsgi
-mocks/management/.../runmock.py   starts the rule manager, then mitmdump with the addon, and ends both together
-mocks/mitm.py             finds the mitmdump binary, builds its command line
-mocks/addon.py            the mitmproxy addon (runs inside mitmdump: stdlib + mitmproxy only)
-mocks/serving.py          the rule manager's wsgi server, loopback only
-mocks/middleware.py       CORS preflights, before url routing
-mocks/views.py            health, ui, ca.pem, /api/send, /api/proxy/*, every /api route (thin, http only)
-mocks/admin.py            validation, save/delete/toggle/import, history, tester, rule-content
-mocks/mocking.py          decide(): engine verdict for a request, the 404 fallback for direct ones
-mocks/engine.py           RuleStore (live reload by mtime/size), Metrics, Engine, forward()
-mocks/ui.html             plain html, native dialog + a few lines of css, served as is
-rules.json                5 seed rules on www.yahoo.com (mail 503, news slow, finance hang up, search 429, an inactive forward)
-conftest.py               self-starting server fixture, make_rule, local upstream for proxyTo
-tests/                    104 pytest tests (proxy and https in test_proxy.py, the binary lookup in test_mitm.py), a csv-driven match matrix under data_driven/
+manage.py                    django's command line, `runmock` is the entry point
+pyproject.toml               black, pylint, bandit and pytest settings in one place
+requirements/                base.txt (django, mitmproxy), local.txt (+ pytest, requests, black, bandit, pylint)
+scripts/                     first_setup.sh, run_tests.sh, checks.sh
+data/                        rules.json (the tracked seed); hits, history, rule_content, ca/ appear here at runtime, git-ignored
+config/                      the project package, no logic
+  settings/base.py           what every run shares (no db, no sessions, one middleware)
+  settings/local.py          the machine: allowed hosts, secret key, the data dir (a mock proxy is never deployed, so no production.py)
+  urls.py  wsgi.py
+mocks/                       the one app
+  conf.py                    data paths, version, limits
+  state.py                   the singletons: engine, admin facade, mitmdump's port
+  urls.py                    the whole route table, first match wins, unclaimed paths are the rule engine's
+  middleware.py              CORS preflights, before url routing
+  apis/                      thin http layer: read the request, call a service, shape the response
+    routing.py               the method gate (405, or fall through to the rule engine)
+    helpers.py               reply(), query, json body, raw request line and headers
+    system.py                health, ui, ca.pem, /api/send, version
+    rules.py                 rules, rule_item (export/import/test), toggle, history
+    content.py               rule-content list, put, delete, public get
+    runtime.py               pause switch, metrics
+    proxy.py                 /api/proxy/decide and /seen, the two calls the addon makes
+    fallback.py              a direct request nothing claimed: pause 503, rules, 404
+  services/                  the domain, no http in here
+    engine.py                pick the winning rule, run it
+    matching.py              does a rule match a request
+    actions.py               overrides, synthetic responses, proxyTo replay, {host} macro
+    storage.py               RuleStore (live reload by mtime/size), Metrics
+    content.py               stored rule content, bodyHTML references
+    messages.py              the request dict and its header helpers
+    decisions.py             decide(): respond / disconnect / let through, as data
+    admin.py                 validation, save/delete/toggle/import, history, tester
+  proxy/                     the mitmdump side
+    mitm.py                  finds the binary, builds its command line
+    addon.py                 the mitmproxy addon (runs inside mitmdump: stdlib + mitmproxy only)
+    serving.py               the rule manager's loopback wsgi server
+  management/commands/runmock.py   starts the rule manager, then mitmdump, ends both together
+  web/ui.html                plain html, native dialog + a few lines of css, served as is
+tests/                       conftest.py (self-starting server, make_rule, local upstreams), mirrors the layers
+  api/                       admin api, health/ui/cors
+  services/                  rule actions, match matrix (csv-driven, data_driven/)
+  proxy/                     proxy and https behaviour, the binary lookup
 ```
 
-a proxied request goes: mitmdump, the addon, `/api/proxy/decide`, the rule engine, back to the addon, which answers, kills or lets it through. a direct request goes: mitmdump, the addon (rerouted), the middleware (preflight), then urls.py: health / ui / ca.pem / admin, then the catch-all view: the pause switch (503), the rule engine, 404. a `disconnect` rule on a direct path comes back as an empty 204 with an `X-Mock-Hangup` header, which the addon turns into a killed connection.
+no `selectors` layer (HackSoft's read side): reads here are two-line lookups in the services, a separate module would only be an empty hop.
+
+a proxied request goes: mitmdump, the addon, `/api/proxy/decide`, the rule engine, back to the addon, which answers, kills or lets it through. a direct request goes: mitmdump, the addon (rerouted), the middleware (preflight), then urls.py: health / ui / ca.pem / admin, then `apis/fallback.py`: the pause switch (503), the rule engine, 404. a `disconnect` rule on a direct path comes back as an empty 204 with an `X-Mock-Hangup` header, which the addon turns into a killed connection.
 
 ## the rule engine
 

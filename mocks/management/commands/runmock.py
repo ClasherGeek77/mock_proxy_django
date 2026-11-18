@@ -5,8 +5,9 @@ import threading
 from django.core.management.base import BaseCommand, CommandError
 from django.core.wsgi import get_wsgi_application
 
-from mocks import mitm, serving
-from mocks.state import CA_DIR, PUBLIC
+from mocks.conf import CA_DIR
+from mocks.proxy import mitm, serving
+from mocks.state import PUBLIC
 
 
 def stop(*_):
