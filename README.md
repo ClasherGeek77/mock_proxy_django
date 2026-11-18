@@ -11,11 +11,10 @@ the split: django owns routing, requests, responses and the wsgi plumbing; the t
 .venv/bin/python manage.py runmock                 # http://127.0.0.1:38800
 .venv/bin/python manage.py runmock --port 9000 [--no-mitm] [--insecure]
 ./run_tests.sh                     # 97 tests, the suite starts its own server on a free port
-./run_e2e.sh                       # live: real server process + /ui driven in headless chrome (46 checks)
 ./checks.sh                        # bandit, black, pylint (10/10)
 ```
 
-`MOCK_URL=http://127.0.0.1:38800 ./run_tests.sh` tests an already running server instead (the live-reload test skips, it needs the server's data dir). `MOCK_DATA_DIR` moves all mutable state (rules, history, hits, rule-content, the CA) off the checked-in files; the tests and the e2e run use it.
+`MOCK_URL=http://127.0.0.1:38800 ./run_tests.sh` tests an already running server instead (the live-reload test skips, it needs the server's data dir). `MOCK_DATA_DIR` moves all mutable state (rules, history, hits, rule-content, the CA) off the checked-in files; the tests use it.
 
 under any other wsgi server (`mockproxy.wsgi:application`) the admin api, the ui and direct mocking work; proxy mode and https interception need `runmock`, which owns the socket, and a `disconnect` rule can only answer an empty 204 there.
 
@@ -59,7 +58,6 @@ mocks/ui.html             plain html, native dialog + a few lines of css, served
 rules.json                5 seed rules on www.yahoo.com (mail 503, news slow, finance hang up, search 429, an inactive forward)
 conftest.py               self-starting server fixture, make_rule, local upstream for proxyTo
 tests/                    97 pytest tests (proxy and https in test_proxy.py), a csv-driven match matrix under data_driven/
-e2e/ui_live.py            browser end-to-end of the editor, effects verified by independent http calls
 ```
 
 a request goes: the middleware (proxy mode, preflight), then urls.py: health / ui / ca.pem / admin, then the catch-all view: the pause switch (503), the rule engine, 404.
